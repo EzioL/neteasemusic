@@ -13,12 +13,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 import us.codecraft.webmagic.Page;
 import us.codecraft.webmagic.Site;
 import us.codecraft.webmagic.Spider;
+import us.codecraft.webmagic.downloader.HttpClientDownloader;
 import us.codecraft.webmagic.processor.PageProcessor;
+import us.codecraft.webmagic.proxy.Proxy;
+import us.codecraft.webmagic.proxy.SimpleProxyProvider;
 
 /**
  * Created by Ezio on 2017/6/27.
@@ -34,14 +38,16 @@ public class NetEaseMusicPageProcessor implements PageProcessor {
 	public static final String MUSIC_URL = "http://music\\.163\\.com/song\\?id=\\d+";
 	// 初始地址, 褐言喜欢的音乐id 148174530
 	public static final String START_URL = "http://music.163.com/playlist?id=148174530";
-	public static final int ONE_PAGE = 20;
-
+	public static final int ONE_PAGE = 200;
+	private int timestamp = (int) (new Date().getTime()/1000);
+	private final String authHeader = authHeader("ZF20179221632tODs6v", "038de086e3b34575a4af7be000f41f89", timestamp);
 	private Site site = Site.me()
 			.setDomain("http://music.163.com")
 			.setSleepTime(1000)
 			.setRetryTimes(30)
 			.setCharset("utf-8")
 			.setTimeOut(30000)
+			.addHeader("Proxy-Authorization", authHeader)
 			.setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_7_2) AppleWebKit/537.31 (KHTML, like Gecko) Chrome/26.0.1410.65 Safari/537.31");
 
 	@Override
@@ -122,12 +128,46 @@ public class NetEaseMusicPageProcessor implements PageProcessor {
 	public void start(NetEaseMusicPageProcessor processor, NetEaseMusicPipeline netEaseMusicPipeline) {
 
 		long start = System.currentTimeMillis();
+		final String ip = "forward.xdaili.cn";//这里以正式服务器ip地址为准
+		final int port = 80;//这里以正式服务器端口地址为准
+
+		//以下订单号，secret参数 须自行改动
+
+		HttpClientDownloader httpClientDownloader = new HttpClientDownloader();
+		httpClientDownloader.setProxyProvider(SimpleProxyProvider.from(new Proxy(ip,port)));
+
+
 		Spider.create(processor)
 				.addUrl(START_URL)
+				.setDownloader(httpClientDownloader)
+				.thread(5)
 //				.addPipeline(netEaseMusicPipeline)
 				.run();
 		long end = System.currentTimeMillis();
 		System.out.println("爬虫结束,耗时--->" + NetEaseMusicUtils.parseMillisecone(end - start));
 
 	}
+
+
+	/**
+	 * http://www.xdaili.cn/usercenter/order
+	 * 讯代理 买了10W 的
+	 * @param orderno
+	 * @param secret
+	 * @param timestamp
+	 * @return
+	 */
+
+	public static String authHeader(String orderno, String secret, int timestamp){
+		//拼装签名字符串
+		String planText = String.format("orderno=%s,secret=%s,timestamp=%d", orderno, secret, timestamp);
+
+		//计算签名
+		String sign = org.apache.commons.codec.digest.DigestUtils.md5Hex(planText).toUpperCase();
+
+		//拼装请求头Proxy-Authorization的值
+		String authHeader = String.format("sign=%s&orderno=%s&timestamp=%d", sign, orderno, timestamp);
+		return authHeader;
+	}
+
 }
